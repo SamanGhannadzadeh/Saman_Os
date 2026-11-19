@@ -1,0 +1,215 @@
+#!/usr/bin/env python3
+"""Saman OS updater — checks GitHub Releases for a newer Saman OS
+update package, downloads it, verifies its SHA-256, installs it
+(with a backup first) and can roll back.
+
+Usage:
+  saman-updater check     – is a newer version available?
+  saman-updater install   – download + verify + install (root)
+  saman-updater rollback  – restore the pre-update backup (root)
+  saman-updater version   – print the installed version
+
+Config: /etc/saman-updater.conf  (REPO=owner/name)
+Update package format: a release asset named
+  saman-os-update-<version>.tar.gz
+containing install.sh (run as root with the payload dir as $1)
+plus a sibling asset saman-os-update-<version>.tar.gz.sha256.
+"""
+import hashlib, json, os, shutil, subprocess, sys, tarfile, tempfile
+import urllib.request
+
+CONF = "/etc/saman-updater.conf"
+VERSION_FILE = "/usr/lib/saman-os/VERSION"
+CACHE = "/var/cache/saman-updater"
+BACKUP_DIR = "/var/lib/saman-updater"
+LOG = "/var/log/saman-updater.log"
+DEFAULT_REPO = "sama19673546-web/saman-os"
+
+
+def log(msg):
+    print(msg, flush=True)
+    try:
+        os.makedirs(os.path.dirname(LOG), exist_ok=True)
+        with open(LOG, "a") as f:
+            f.write(msg + "\n")
+    except OSError:
+        pass
+
+
+def repo():
+    try:
+        with open(CONF) as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("REPO="):
+                    return line.split("=", 1)[1].strip().strip('"')
+    except OSError:
+        pass
+    return DEFAULT_REPO
+
+
+def local_version():
+    try:
+        with open(VERSION_FILE) as f:
+            return f.read().strip()
+    except OSError:
+        return "0"
+
+
+def parse_ver(v):
+    v = v.lstrip("v")
+    parts = []
+    for p in v.replace("-", ".").split("."):
+        parts.append(int(p) if p.isdigit() else 0)
+    return parts
+
+
+def fetch_json(url):
+    req = urllib.request.Request(url, headers={"User-Agent": "saman-updater/1.0"})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+
+def fetch_file(url, dest):
+    req = urllib.request.Request(url, headers={"User-Agent": "saman-updater/1.0"})
+    with urllib.request.urlopen(req, timeout=600) as r, open(dest, "wb") as f:
+        shutil.copyfileobj(r, f, 1024 * 256)
+
+
+def latest_release():
+    return fetch_json(f"https://api.github.com/repos/{repo()}/releases/latest")
+
+
+def find_assets(rel, version):
+    pkg = f"saman-os-update-{version}.tar.gz"
+    pkg_url = sha_url = None
+    for a in rel.get("assets", []):
+        if a["name"] == pkg:
+            pkg_url = a["browser_download_url"]
+        elif a["name"] == pkg + ".sha256":
+            sha_url = a["browser_download_url"]
+    return pkg_url, sha_url
+
+
+def cmd_check():
+    cur = local_version()
+    rel = latest_release()
+    new = rel["tag_name"].lstrip("v")
+    if parse_ver(new) > parse_ver(cur):
+        pkg_url, _ = find_assets(rel, new)
+        if pkg_url:
+            log(f"نسخهٔ تازه موجود است: {new} (نصب‌شده: {cur})")
+            log("برای نصب: sudo saman-updater install")
+            return 0
+        log(f"نسخهٔ {new} هست ولی بستهٔ به‌روزرسانی ندارد.")
+        return 2
+    log(f"به‌روز است: {cur}")
+    return 0
+
+
+def cmd_install():
+    if os.geteuid() != 0:
+        log("نصب باید با root اجرا شود: sudo saman-updater install")
+        return 1
+    cur = local_version()
+    rel = latest_release()
+    new = rel["tag_name"].lstrip("v")
+    if parse_ver(new) <= parse_ver(cur):
+        log(f"نسخهٔ تازه‌ای نیست (نصب‌شده: {cur})")
+        return 0
+    pkg_url, sha_url = find_assets(rel, new)
+    if not pkg_url or not sha_url:
+        log("بستهٔ به‌روزرسانی یا فایل هش در انتشار پیدا نشد.")
+        return 2
+    os.makedirs(CACHE, exist_ok=True)
+    pkg = os.path.join(CACHE, f"saman-os-update-{new}.tar.gz")
+    sha = pkg + ".sha256"
+    log(f"دریافت بستهٔ {new} ...")
+    fetch_file(pkg_url, pkg)
+    fetch_file(sha_url, sha)
+    want = open(sha).read().split()[0].strip().lower()
+    h = hashlib.sha256()
+    with open(pkg, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    if h.hexdigest().lower() != want:
+        log("خطا: هش SHA-256 بسته درست نیست؛ نصب لغو شد.")
+        return 3
+    log("هش بسته تأیید شد.")
+    work = tempfile.mkdtemp(prefix="saman-update-")
+    with tarfile.open(pkg) as t:
+        t.extractall(work, filter="data")
+    installer = os.path.join(work, "install.sh")
+    if not os.path.isfile(installer):
+        log("خطا: install.sh داخل بسته نیست؛ نصب لغو شد.")
+        return 4
+    # Backup: the package lists the files it will touch in files.txt
+    # (one absolute path per line). Snapshot them before installing.
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+    backup = os.path.join(BACKUP_DIR, f"backup-before-{new}.tar.gz")
+    files_list = os.path.join(work, "files.txt")
+    if os.path.isfile(files_list):
+        paths = [l.strip().lstrip("/") for l in open(files_list) if l.strip()]
+        existing = [p for p in paths if os.path.exists("/" + p)]
+        if existing:
+            with tarfile.open(backup, "w:gz") as t:
+                for p in existing:
+                    t.add("/" + p, arcname=p)
+            log(f"پشتیبان گرفته شد: {backup}")
+    with open(os.path.join(BACKUP_DIR, "last-backup.txt"), "w") as f:
+        f.write(backup + "\n" + cur + "\n")
+    log("در حال نصب ...")
+    r = subprocess.run(["/bin/bash", installer, work], capture_output=True, text=True)
+    log(r.stdout.strip())
+    if r.returncode != 0:
+        log("خطای نصب:\n" + r.stderr.strip())
+        log("برای برگشت: sudo saman-updater rollback")
+        return 5
+    os.makedirs(os.path.dirname(VERSION_FILE), exist_ok=True)
+    with open(VERSION_FILE, "w") as f:
+        f.write(new + "\n")
+    log(f"تمام شد: Saman OS {new} نصب شد. یک بار راه‌اندازی مجدد کنید.")
+    return 0
+
+
+def cmd_rollback():
+    if os.geteuid() != 0:
+        log("برگشت باید با root اجرا شود.")
+        return 1
+    meta = os.path.join(BACKUP_DIR, "last-backup.txt")
+    if not os.path.isfile(meta):
+        log("پشتیبانی برای برگشت پیدا نشد.")
+        return 2
+    backup, oldver = open(meta).read().splitlines()[:2]
+    if not os.path.isfile(backup):
+        log("فایل پشتیبان پیدا نشد.")
+        return 2
+    with tarfile.open(backup) as t:
+        t.extractall("/", filter="data")
+    with open(VERSION_FILE, "w") as f:
+        f.write(oldver + "\n")
+    log(f"برگشت انجام شد: نسخهٔ {oldver}")
+    return 0
+
+
+def main():
+    cmd = sys.argv[1] if len(sys.argv) > 1 else "check"
+    try:
+        if cmd == "check":
+            return cmd_check()
+        if cmd == "install":
+            return cmd_install()
+        if cmd == "rollback":
+            return cmd_rollback()
+        if cmd == "version":
+            print(local_version())
+            return 0
+        print(__doc__)
+        return 64
+    except Exception as e:  # network down, repo missing, ...
+        log(f"خطا: {e}")
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

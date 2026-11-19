@@ -1,0 +1,13 @@
+NAME="Saman OS"
+PRETTY_NAME="Saman OS 2.0"
+ID=samanos
+ID_LIKE=ubuntu
+VERSION="2.0"
+VERSION_ID="2.0"
+VERSION_CODENAME=stonking
+HOME_URL="https://github.com/sama19673546-web"
+SUPPORT_URL="https://github.com/sama19673546-web"
+BUG_REPORT_URL="https://github.com/sama19673546-web"
+PRIVACY_POLICY_URL="https://github.com/sama19673546-web"
+UBUNTU_CODENAME=stonking
+LOGO=saman-logo

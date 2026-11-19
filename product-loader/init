@@ -1,0 +1,73 @@
+#!/bin/busybox sh
+# Saman OS product loader initramfs.
+# Job: load the storage drivers, mount the real root disk
+# (LABEL=SAMANOS content, found on virtio or ATA), and switch_root
+# into it so systemd becomes PID 1. Nothing else lives here.
+/bin/busybox mount -t devtmpfs devtmpfs /dev 2>/dev/null
+/bin/busybox mount -t proc proc /proc 2>/dev/null
+/bin/busybox mount -t sysfs sysfs /sys 2>/dev/null
+
+echo "[loader] Saman OS product loader starting ..."
+while read -r m; do
+  case "$m" in
+    ""|\#*) continue ;;
+  esac
+  /bin/busybox insmod "$m" 2>/dev/null
+done < /modules.list
+echo "[loader] storage modules loaded"
+
+# --- live mode (boot=live on the kernel cmdline): find the ISO
+# medium, loop-mount its casper/filesystem.squashfs read-only, put a
+# tmpfs overlay on top, and switch_root into the live desktop. ---
+LIVE=0
+for p in $(cat /proc/cmdline); do
+  [ "$p" = "boot=live" ] && LIVE=1
+done
+if [ "$LIVE" = "1" ]; then
+  /bin/busybox mkdir -p /iso /ro /rw /newroot
+  FOUND=""
+  for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+    for d in /dev/sr0 /dev/sr1 /dev/vda /dev/sda /dev/nvme0n1 /dev/vdb /dev/sdb; do
+      [ -b "$d" ] || continue
+      if /bin/busybox mount -t iso9660 -o ro "$d" /iso 2>/dev/null && [ -f /iso/casper/filesystem.squashfs ]; then
+        FOUND="$d"; break 2
+      fi
+      /bin/busybox umount /iso 2>/dev/null
+    done
+    /bin/busybox sleep 1
+  done
+  if [ -n "$FOUND" ] \
+     && /bin/busybox mount -o loop,ro -t squashfs /iso/casper/filesystem.squashfs /ro \
+     && /bin/busybox mount -t tmpfs tmpfs /rw; then
+    /bin/busybox mkdir -p /rw/upper /rw/work
+    if /bin/busybox mount -t overlay overlay -o lowerdir=/ro,upperdir=/rw/upper,workdir=/rw/work /newroot; then
+      /bin/busybox mkdir -p /newroot/mnt/iso
+      /bin/busybox mount -o bind /iso /newroot/mnt/iso 2>/dev/null
+      echo "[loader] live medium $FOUND, overlay root ready"
+      echo "SAMANOS_LIVE_OK dev=$FOUND"
+      exec /bin/busybox switch_root /newroot /sbin/init
+    fi
+  fi
+  echo "[loader] FAILED: live boot could not assemble the overlay root"
+  echo "SAMANOS_LIVE_FAIL"
+  exec /bin/busybox sh
+fi
+
+DEV=""
+for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+  for d in /dev/vda /dev/sda /dev/nvme0n1; do
+    if [ -b "$d" ]; then DEV="$d"; break 2; fi
+  done
+  /bin/busybox sleep 1
+done
+
+/bin/busybox mkdir -p /newroot
+if [ -n "$DEV" ] && /bin/busybox mount -t ext4 "$DEV" /newroot; then
+  echo "[loader] root disk $DEV mounted"
+  echo "SAMANOS_ROOT_OK dev=$DEV"
+  exec /bin/busybox switch_root /newroot /sbin/init
+fi
+
+echo "[loader] FAILED: no root disk found or mount failed"
+echo "SAMANOS_ROOT_FAIL"
+exec /bin/busybox sh

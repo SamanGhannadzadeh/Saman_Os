@@ -1,0 +1,6 @@
+# KEYBOARD CONFIGURATION FILE (console-setup)
+XKBMODEL="pc105"
+XKBLAYOUT="us,ir"
+XKBVARIANT=","
+XKBOPTIONS="grp:alt_shift_toggle,terminate:ctrl_alt_bksp"
+BACKSPACE="guess"
