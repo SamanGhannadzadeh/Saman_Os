@@ -9,6 +9,27 @@
 - نسخهٔ فعلی: **2.0** — دسکتاپ محصول (GNOME + Yaru) روی روت‌فایل‌سیستم واقعی دیسکی، با ورود خودکار و برندینگ Saman OS.
 - ایمیج زنده (Live ISO) با بوت دوگانهٔ BIOS و UEFI در بخش Releases منتشر می‌شود.
 
+## دانلود | Download
+
+ایمیج زنده (Live ISO) از سه راه منتشر می‌شود — هر سه، یک فایل
+با یک هش SHA-256 یکسان‌اند:
+
+1. **GitHub Releases** (راه اصلی):
+   https://github.com/saman-ghannadzadeh/saman-os/releases
+   — نسخهٔ ۲٫۰: فایل ISO روی گوگل درایو میزبانی می‌شود:
+   https://drive.google.com/file/d/1_O4r_PWBngu0K_r7kawHJQ2J6mvFI-2O/view?usp=drivesdk
+2. **آینهٔ archive.org** — برای دانلود راحت‌تر از داخل ایران،
+   لینک هر نسخه در همان صفحهٔ Releases اعلام می‌شود.
+3. **تورنت** — فایل `.torrent` و لینک مگنت کنار هر Release
+   قرار می‌گیرد.
+
+پیش از نصب، سلامت فایل را با `SHA256SUMS.txt` همان Release
+بسنجید:
+
+```sh
+sha256sum -c SHA256SUMS.txt
+```
+
 ## به‌روزرسانی | Updates
 
 داخل خود سیستم‌عامل، ابزار `saman-updater` انتشارهای همین مخزن را بررسی می‌کند:
