@@ -1,0 +1,4 @@
+# Saman OS: compressed RAM swap — no swap data ever touches disk.
+ALGO=zstd
+PERCENT=50
+PRIORITY=100

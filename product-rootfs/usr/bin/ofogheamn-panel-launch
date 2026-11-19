@@ -1,0 +1,9 @@
+#!/bin/bash
+# Open the Ofogheamn DNS panel if it is installed; otherwise offer the
+# on-demand install (the panel is downloaded from GitHub, never baked
+# into the OS image).
+if systemctl cat ofogheamn-panel.service >/dev/null 2>&1; then
+  exec xdg-open http://127.0.0.1:8080
+fi
+exec gnome-terminal --title="نصب پنل DNS افق امن" -- bash -c \
+  'echo "پنل DNS هنوز نصب نیست. در حال دریافت از گیت‌هاب..."; sudo saman-dns-install; echo; echo "پایان. این پنجره را می‌توانید ببندید."; read -n1'

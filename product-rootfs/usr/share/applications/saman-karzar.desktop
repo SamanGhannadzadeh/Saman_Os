@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Saman Karzar
+Name[fa]=کارزار
+Comment=Petition: end gaming latency in Iran
+Exec=saman-karzar
+Icon=internet-news
+Terminal=false
+Categories=Network;Utility;

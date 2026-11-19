@@ -1,0 +1,14 @@
+[Unit]
+Description=Install the staged Ofogheamn DNS panel (downloaded during OS install)
+ConditionPathExists=/etc/saman-dns-pending
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/saman-dns-install --staged
+RemainAfterExit=yes
+TimeoutStartSec=1200
+
+[Install]
+WantedBy=multi-user.target

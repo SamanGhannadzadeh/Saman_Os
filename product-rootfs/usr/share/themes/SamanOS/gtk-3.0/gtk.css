@@ -1,0 +1,82 @@
+@import url("resource:///com/ubuntu/themes/Yaru/3.0/gtk.css");
+
+/* --- Saman OS glass overrides: one design language everywhere --- */
+headerbar {
+  background: rgba(16, 22, 44, 0.92);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+  box-shadow: none;
+}
+window, dialog, messagedialog {
+  border-radius: 14px;
+}
+button {
+  border-radius: 10px;
+}
+entry {
+  border-radius: 10px;
+}
+selection, *:selected {
+  background-color: #1f6feb;
+}
+
+/* --- Optimization pass 2: calendar, popovers, cards — same glass --- */
+popover, menu, .context-menu {
+  background: rgba(12, 18, 38, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+}
+popover > contents { border-radius: 14px; }
+/* GtkCalendar — the OS calendar widget in template glass */
+calendar {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 14px;
+  padding: 6px;
+}
+calendar.header {
+  background: rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 10px;
+  font-weight: 800;
+}
+calendar.button { border-radius: 10px; }
+calendar.button:hover { background: rgba(255, 255, 255, 0.10); }
+calendar:selected, calendar.day-number:selected {
+  background-color: #1f6feb;
+  color: #ffffff;
+  border-radius: 10px;
+}
+calendar.day-number.today, calendar.today {
+  background-color: rgba(31, 111, 235, 0.85);
+  color: #ffffff;
+  border-radius: 10px;
+  font-weight: 800;
+}
+calendar:indeterminate, calendar.day-number:indeterminate {
+  color: rgba(255, 255, 255, 0.35);
+}
+/* Cards + lists — one card language for every Saman app */
+.card {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 14px;
+}
+list, .content {
+  background: transparent;
+}
+row { border-radius: 10px; }
+row:hover { background: rgba(255, 255, 255, 0.07); }
+row:selected { background: rgba(31, 111, 235, 0.45); }
+/* Slim, quiet scrollbars */
+scrollbar { background: transparent; border: none; }
+scrollbar slider {
+  background: rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  min-width: 6px; min-height: 6px;
+}
+scrollbar slider:hover { background: rgba(255, 255, 255, 0.38); }
+/* Switches + checks in accent */
+switch:checked, check:checked, radio:checked {
+  background-color: #1f6feb;
+  border-color: rgba(255, 255, 255, 0.18);
+}

@@ -1,7 +1,19 @@
 [org/gnome/desktop/interface]
-gtk-theme='Yaru'
+gtk-theme='SamanOS'
 icon-theme='Yaru'
 cursor-theme='Yaru'
+color-scheme='prefer-dark'
+
+[org/gnome/shell/extensions/dash-to-dock]
+dock-position='BOTTOM'
+extend-height=false
+transparency-mode='FIXED'
+background-opacity=0.0
+custom-background-color=true
+background-color='rgb(10,15,32)'
+show-trash=false
+show-mounts=false
+click-action='cycle-windows'
 font-name='Ubuntu 11'
 monospace-font-name='Ubuntu Mono 13'
 text-scaling-factor=1.0
@@ -16,7 +28,64 @@ primary-color='#0B1026'
 picture-uri='file:///usr/share/backgrounds/saman-os.png'
 
 [org/gnome/shell]
-favorite-apps=['org.gnome.Terminal.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Settings.desktop']
+enabled-extensions=['blur-my-shell@aunetx', 'user-theme@gnome-shell-extensions.gcampax.github.com', 'compiz-alike-magic-lamp-effect@hermes83.github.com', 'ubuntu-dock@ubuntu.com', 'ubuntu-appindicators@ubuntu.com', 'tiling-assistant@ubuntu.com', 'ding@rastersoft.com', 'gsconnect@andyholmes.github.io']
+favorite-apps=['org.gnome.Nautilus.desktop', 'org.gnome.Epiphany.desktop', 'org.gnome.Terminal.desktop', 'saman-center.desktop', 'saman-store.desktop', 'saman-clock.desktop', 'saman-calc.desktop', 'saman-calendar.desktop', 'saman-notes.desktop', 'saman-nettest.desktop', 'saman-antivirus.desktop', 'saman-dns-client.desktop', 'ofogheamn-panel.desktop', 'saman-karzar.desktop', 'org.gnome.Settings.desktop']
 
 [org/gnome/desktop/session]
 idle-delay=uint32 0
+
+[org/gnome/shell/extensions/user-theme]
+name='SamanOS'
+
+[org/gnome/shell/extensions/blur-my-shell/panel]
+blur=true
+sigma=25
+brightness=0.55
+
+[org/gnome/shell/extensions/blur-my-shell/dash-to-dock]
+blur=true
+sigma=25
+brightness=0.55
+
+[org/gnome/shell/extensions/blur-my-shell/overview]
+blur=true
+sigma=25
+brightness=0.6
+
+[org/gnome/shell/extensions/blur-my-shell/appfolder]
+blur=true
+sigma=25
+brightness=0.6
+
+# --- Security & privacy pack (2026-11-19) ---
+[org/gnome/desktop/screensaver]
+lock-enabled=true
+ubuntu-lock-on-suspend=true
+
+[org/gnome/desktop/privacy]
+remember-recent-files=false
+remove-old-temp-files=true
+remove-old-trash-files=true
+old-files-age=uint32 30
+
+[org/gnome/desktop/interface]
+clock-show-weekday=true
+clock-show-date=true
+
+[org/gnome/settings-daemon/plugins/color]
+night-light-enabled=true
+night-light-schedule-automatic=true
+
+[org/gnome/desktop/peripherals/touchpad]
+tap-to-click=true
+
+[org/gnome/shell/extensions/blur-my-shell/applications]
+blur=true
+sigma=25
+brightness=0.55
+whitelist=['saman-widgets', 'saman-calendar', 'saman-clock', 'saman-center', 'saman-antivirus', 'epiphany', 'org.gnome.Nautilus']
+
+# Windows-parity platform switches (2026-11-19): variable refresh
+# rate where the panel supports it (Windows' Dynamic Refresh).
+[org/gnome/mutter]
+experimental-features=['variable-refresh-rate']

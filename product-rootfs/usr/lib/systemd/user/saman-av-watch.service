@@ -1,0 +1,9 @@
+[Unit]
+Description=SamanOS Antivirus — realtime watch of hot folders
+After=graphical-session.target
+[Service]
+ExecStart=/usr/bin/saman-av-watch
+Restart=on-failure
+RestartSec=10
+[Install]
+WantedBy=default.target

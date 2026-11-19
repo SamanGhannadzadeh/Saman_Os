@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=پنل DNS افق امن
+Name[en]=Ofogheamn DNS Panel
+Comment=پنل مدیریت DNS گیمینگ افق امن — نصب درخواستی از گیت‌هاب
+Exec=ofogheamn-panel-launch
+Icon=network-server
+Terminal=false
+Categories=Network;Settings;

@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Saman Welcome
+Exec=/usr/bin/saman-welcome --first-run
+Icon=preferences-desktop
+Terminal=false
+X-GNOME-Autostart-enabled=true

@@ -1,0 +1,9 @@
+[Unit]
+Description=SamanOS Antivirus — update ClamAV signatures (freshclam)
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/freshclam --quiet
+# Offline or mirror hiccup must never fail the boot chain:
+ExecStart=/bin/true

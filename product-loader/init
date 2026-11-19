@@ -20,22 +20,78 @@ echo "[loader] storage modules loaded"
 # medium, loop-mount its casper/filesystem.squashfs read-only, put a
 # tmpfs overlay on top, and switch_root into the live desktop. ---
 LIVE=0
+SAMAN_ISO=""
 for p in $(cat /proc/cmdline); do
   [ "$p" = "boot=live" ] && LIVE=1
+  case "$p" in
+    saman_iso=*) SAMAN_ISO="${p#saman_iso=}" ;;
+  esac
 done
-if [ "$LIVE" = "1" ]; then
-  /bin/busybox mkdir -p /iso /ro /rw /newroot
-  FOUND=""
-  for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
-    for d in /dev/sr0 /dev/sr1 /dev/vda /dev/sda /dev/nvme0n1 /dev/vdb /dev/sdb; do
-      [ -b "$d" ] || continue
-      if /bin/busybox mount -t iso9660 -o ro "$d" /iso 2>/dev/null && [ -f /iso/casper/filesystem.squashfs ]; then
-        FOUND="$d"; break 2
-      fi
-      /bin/busybox umount /iso 2>/dev/null
-    done
-    /bin/busybox sleep 1
+# --- boot from an ISO FILE on an internal partition (v3.1, e.g.
+# GRUB2Win on a Windows machine): mount each partition read-only
+# (NTFS/FAT/exFAT/ext4), find the ISO file — the exact path from
+# saman_iso= wins, else a root-level saman-os*.iso — loop-mount it
+# on /iso and let the normal live flow take over. The host
+# partition stays mounted on /isohost. ---
+try_iso_file() {
+  parts=""
+  for base in /dev/sda /dev/sdb /dev/vda /dev/vdb; do
+    for n in 1 2 3 4 5 6 7 8; do parts="$parts $base$n"; done
   done
+  for base in /dev/nvme0n1 /dev/mmcblk0; do
+    for n in 1 2 3 4 5 6 7 8; do parts="$parts ${base}p$n"; done
+  done
+  for d in $parts; do
+    [ -b "$d" ] || continue
+    for fs in ntfs3 vfat exfat ext4; do
+      if /bin/busybox mount -t $fs -o ro "$d" /isohost 2>/dev/null; then
+        f=""
+        if [ -n "$SAMAN_ISO" ] && [ -f "/isohost$SAMAN_ISO" ]; then
+          f="/isohost$SAMAN_ISO"
+        fi
+        if [ -z "$f" ]; then
+          for g in /isohost/saman-os*.iso; do
+            [ -f "$g" ] && f="$g" && break
+          done
+        fi
+        if [ -n "$f" ] \
+           && /bin/busybox mount -o loop,ro -t iso9660 "$f" /iso 2>/dev/null \
+           && [ -f /iso/casper/filesystem.squashfs ]; then
+          FOUND="file:$d:$f"
+          return 0
+        fi
+        /bin/busybox umount /iso 2>/dev/null
+        /bin/busybox umount /isohost 2>/dev/null
+        break
+      fi
+    done
+  done
+  return 1
+}
+if [ "$LIVE" = "1" ]; then
+  /bin/busybox mkdir -p /iso /isohost /ro /rw /newroot
+  FOUND=""
+  ISO_TRIED=0
+  if [ -n "$SAMAN_ISO" ]; then
+    try_iso_file || true
+    ISO_TRIED=1
+  fi
+  if [ -z "$FOUND" ]; then
+    for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+      for d in /dev/sr0 /dev/sr1 /dev/vda /dev/sda /dev/nvme0n1 /dev/vdb /dev/sdb; do
+        [ -b "$d" ] || continue
+        if /bin/busybox mount -t iso9660 -o ro "$d" /iso 2>/dev/null && [ -f /iso/casper/filesystem.squashfs ]; then
+          FOUND="$d"; break 2
+        fi
+        /bin/busybox umount /iso 2>/dev/null
+      done
+      [ -n "$FOUND" ] && break
+      /bin/busybox sleep 1
+    done
+  fi
+  if [ -z "$FOUND" ] && [ "$ISO_TRIED" = "0" ]; then
+    try_iso_file || true
+  fi
   if [ -n "$FOUND" ] \
      && /bin/busybox mount -o loop,ro -t squashfs /iso/casper/filesystem.squashfs /ro \
      && /bin/busybox mount -t tmpfs tmpfs /rw; then
@@ -43,6 +99,12 @@ if [ "$LIVE" = "1" ]; then
     if /bin/busybox mount -t overlay overlay -o lowerdir=/ro,upperdir=/rw/upper,workdir=/rw/work /newroot; then
       /bin/busybox mkdir -p /newroot/mnt/iso
       /bin/busybox mount -o bind /iso /newroot/mnt/iso 2>/dev/null
+      case "$FOUND" in
+        file:*)
+          /bin/busybox mkdir -p /newroot/mnt/isohost
+          /bin/busybox mount -o bind /isohost /newroot/mnt/isohost 2>/dev/null
+          ;;
+      esac
       echo "[loader] live medium $FOUND, overlay root ready"
       echo "SAMANOS_LIVE_OK dev=$FOUND"
       exec /bin/busybox switch_root /newroot /sbin/init
@@ -53,21 +115,69 @@ if [ "$LIVE" = "1" ]; then
   exec /bin/busybox sh
 fi
 
-DEV=""
+# --- disk mode: find the Saman OS root. It may be a whole-disk
+# filesystem (the test image) or one partition of an installed disk.
+# A candidate counts only if it carries the product marker
+# (/usr/lib/saman-os/VERSION) next to /sbin/init, so foreign Linux
+# partitions are never mistaken for the root. ---
+/bin/busybox mkdir -p /newroot
+try_root() {
+  /bin/busybox mount -t ext4 "$1" /newroot 2>/dev/null || return 1
+  if [ -f /newroot/usr/lib/saman-os/VERSION ] && [ -e /newroot/sbin/init ]; then
+    return 0
+  fi
+  /bin/busybox umount /newroot 2>/dev/null
+  return 1
+}
+# --- LUKS: an encrypted root shows up as a LUKS container, not a
+# filesystem. Offer to unlock it (3 tries, passphrase from the
+# console) and then treat the mapper device as the root candidate. ---
+unlock_luks() {
+  [ -x /usr/sbin/cryptsetup ] || return 1
+  /usr/sbin/cryptsetup isLuks "$1" 2>/dev/null || return 1
+  [ -b /dev/mapper/samanos-root ] && return 0
+  /bin/busybox mkdir -p /run/cryptsetup
+  echo "[loader] encrypted root found on $1"
+  t=0
+  while [ $t -lt 3 ] && [ ! -b /dev/mapper/samanos-root ]; do
+    printf "Saman OS: enter passphrase to unlock %s: " "$1" > /dev/console
+    /bin/busybox stty -echo < /dev/console 2>/dev/null
+    read -r PASS < /dev/console
+    /bin/busybox stty echo < /dev/console 2>/dev/null
+    echo "" > /dev/console
+    printf '%s' "$PASS" | /usr/sbin/cryptsetup open "$1" samanos-root --key-file - 2>/dev/null
+    PASS=""
+    t=$((t+1))
+  done
+  [ -b /dev/mapper/samanos-root ]
+}
+
+FOUND=""
 for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
-  for d in /dev/vda /dev/sda /dev/nvme0n1; do
-    if [ -b "$d" ]; then DEV="$d"; break 2; fi
+  for d in /dev/mapper/samanos-root \
+           /dev/vda /dev/sda /dev/nvme0n1 \
+           /dev/vda1 /dev/vda2 /dev/vda3 /dev/vda4 \
+           /dev/sda1 /dev/sda2 /dev/sda3 /dev/sda4 \
+           /dev/nvme0n1p1 /dev/nvme0n1p2 /dev/nvme0n1p3 /dev/nvme0n1p4 \
+           /dev/vdb /dev/sdb /dev/vdb1 /dev/sdb1 /dev/vdb2 /dev/sdb2; do
+    [ -b "$d" ] || continue
+    if [ "$d" != "/dev/mapper/samanos-root" ]; then
+      unlock_luks "$d" || true
+    fi
+    if try_root "$d"; then FOUND="$d"; break 2; fi
+    if [ -b /dev/mapper/samanos-root ] && try_root /dev/mapper/samanos-root; then
+      FOUND="/dev/mapper/samanos-root"; break 2
+    fi
   done
   /bin/busybox sleep 1
 done
 
-/bin/busybox mkdir -p /newroot
-if [ -n "$DEV" ] && /bin/busybox mount -t ext4 "$DEV" /newroot; then
-  echo "[loader] root disk $DEV mounted"
-  echo "SAMANOS_ROOT_OK dev=$DEV"
+if [ -n "$FOUND" ]; then
+  echo "[loader] root disk $FOUND mounted"
+  echo "SAMANOS_ROOT_OK dev=$FOUND"
   exec /bin/busybox switch_root /newroot /sbin/init
 fi
 
-echo "[loader] FAILED: no root disk found or mount failed"
+echo "[loader] FAILED: no Saman OS root found"
 echo "SAMANOS_ROOT_FAIL"
 exec /bin/busybox sh

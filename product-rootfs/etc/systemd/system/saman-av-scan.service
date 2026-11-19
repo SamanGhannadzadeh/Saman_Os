@@ -1,0 +1,8 @@
+[Unit]
+Description=SamanOS Antivirus — scheduled quick scan
+After=network-online.target
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/saman-av-scan --quick
+Nice=10
+IOSchedulingClass=idle

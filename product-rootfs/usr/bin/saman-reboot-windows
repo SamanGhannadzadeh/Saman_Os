@@ -1,0 +1,21 @@
+#!/bin/bash
+# saman-reboot-windows — one-click reboot into Windows on dual-boot
+# machines: ask GRUB to boot its "Windows" entry once (grubenv
+# next_entry, consumed by the installed grub.cfg), with a UEFI
+# BootNext fallback. Run as root (the desktop entry uses pkexec).
+set -u
+fail() { command -v zenity >/dev/null && zenity --error --text="$1" 2>/dev/null; echo "$1" >&2; exit 1; }
+
+if grep -q 'menuentry "Windows"' /boot/grub/grub.cfg 2>/dev/null; then
+  grub-reboot "Windows" || fail "تنظیم بوت ویندوز نشد"
+  systemctl reboot
+  exit 0
+fi
+# fallback: UEFI boot entry for Windows Boot Manager
+if command -v efibootmgr >/dev/null; then
+  NUM=$(efibootmgr | sed -n 's/^Boot\([0-9A-Fa-f]*\).*Windows Boot Manager.*/\1/p' | head -1)
+  if [ -n "$NUM" ]; then
+    efibootmgr -n "$NUM" >/dev/null && systemctl reboot && exit 0
+  fi
+fi
+fail "ویندوزی روی این سیستم پیدا نشد"

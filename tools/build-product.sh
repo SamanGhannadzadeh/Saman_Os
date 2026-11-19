@@ -12,11 +12,22 @@ umask 022
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
 
-[ -f cache/product-packages.txt ] || { echo "MISSING cache/product-packages.txt -- run tools/fetch-product.py first"; exit 1; }
-[ -f cache/gui-packages.txt ] || { echo "MISSING cache/gui-packages.txt -- run tools/fetch-gui.py first"; exit 1; }
+if [ "${SAMAN_EDITION:-desktop}" = "server" ]; then
+  [ -f cache/server-packages.txt ] || { echo "MISSING cache/server-packages.txt -- run SAMAN_EDITION=server tools/fetch-product.py first"; exit 1; }
+else
+  [ -f cache/product-packages.txt ] || { echo "MISSING cache/product-packages.txt -- run tools/fetch-product.py first"; exit 1; }
+  [ -f cache/gui-packages.txt ] || { echo "MISSING cache/gui-packages.txt -- run tools/fetch-gui.py first"; exit 1; }
+fi
 
 mkdir -p work build
-cat cache/gui-packages.txt cache/product-packages.txt cache/modules-packages.txt 2>/dev/null | sort -u > work/all-packages.txt
+if [ "${SAMAN_EDITION:-desktop}" = "server" ]; then
+  # Lean server: its own closure + kernel modules ONLY (no GUI, no
+  # desktop product packages — the fix for the "masked desktop"
+  # server Saman caught on 2026-11-19).
+  cat cache/server-packages.txt cache/modules-packages.txt 2>/dev/null | sort -u > work/all-packages.txt
+else
+  cat cache/gui-packages.txt cache/product-packages.txt cache/modules-packages.txt 2>/dev/null | sort -u > work/all-packages.txt
+fi
 echo "package union: $(wc -l < work/all-packages.txt)"
 
 # --- assemble the disk rootfs from the cached .debs ---
@@ -70,6 +81,15 @@ ln -sf /usr/share/keyrings/ubuntu-archive-keyring.gpg work/disk-rootfs/etc/apt/t
 echo "dpkg status entries: $(grep -c '^Package: ' work/disk-rootfs/var/lib/dpkg/status)"
 
 # --- product overlay (branding, users, gdm, dconf) ---
+# The stock Yaru package ships themes/Yaru/gnome-shell as a SYMLINK
+# into gnome-shell/theme/Yaru, but product-rootfs carries a real
+# directory there (the glass CSS) — cp -a refuses to overwrite a
+# symlink with a directory. Drop such symlinks first.
+for p in usr/share/themes/Yaru/gnome-shell; do
+  if [ -L "work/disk-rootfs/$p" ] && [ -d "product-rootfs/$p" ]; then
+    rm "work/disk-rootfs/$p"
+  fi
+done
 cp -a product-rootfs/. work/disk-rootfs/
 rm -f work/disk-rootfs/etc/os-release
 ln -s ../usr/lib/os-release work/disk-rootfs/etc/os-release
@@ -113,11 +133,36 @@ $CR /usr/bin/systemctl preset-all >/dev/null 2>&1 || echo "WARN preset-all"
 $CR /usr/bin/systemctl enable gdm3.service >/dev/null 2>&1 || $CR /usr/bin/systemctl enable gdm.service >/dev/null 2>&1 || echo "WARN enable gdm"
 $CR /usr/bin/systemctl enable NetworkManager.service >/dev/null 2>&1 || echo "WARN enable NM"
 $CR /usr/bin/systemctl enable saman-updater.timer >/dev/null 2>&1 || echo "WARN enable updater timer"
+$CR /usr/bin/systemctl enable saman-dns-firstboot.service >/dev/null 2>&1 || echo "WARN enable dns-firstboot"
+$CR /usr/bin/systemctl enable apparmor.service >/dev/null 2>&1 || echo "WARN enable apparmor"
+$CR /usr/bin/systemctl enable nftables.service >/dev/null 2>&1 || echo "WARN enable nftables"
+$CR /usr/bin/systemctl enable usbguard.service >/dev/null 2>&1 || echo "WARN enable usbguard"
+$CR /usr/bin/systemctl enable zramswap.service >/dev/null 2>&1 || echo "WARN enable zramswap"
+$CR /usr/bin/systemctl enable saman-av-scan.timer saman-av-update.timer >/dev/null 2>&1 || echo "WARN enable saman-av timer"
+# A desktop does not need to advertise itself on the LAN.
+$CR /usr/bin/systemctl mask avahi-daemon.service avahi-daemon.socket >/dev/null 2>&1 || echo "WARN mask avahi"
 $CR /usr/bin/systemctl set-default graphical.target >/dev/null 2>&1 || echo "WARN set-default"
 # The test rig's serial line is a file, not a terminal: agetty exits
 # instantly on EOF and systemd restarts it forever, burning the whole
 # guest CPU and starving the boot. No serial login in the product.
-$CR /usr/bin/systemctl mask serial-getty@ttyS0.service >/dev/null 2>&1 || echo "WARN mask serial-getty"
+if [ "${SAMAN_TEST_SERIAL:-}" != "1" ]; then
+  $CR /usr/bin/systemctl mask serial-getty@ttyS0.service >/dev/null 2>&1 || echo "WARN mask serial-getty"
+else
+  echo "TEST BUILD: serial-getty left unmasked (SAMAN_TEST_SERIAL=1)"
+  # Test-only session diagnostic: 150 s after boot, report the
+  # graphical session's truth to the serial line and un-blank it.
+  cat > work/disk-rootfs/etc/systemd/system/saman-test-diag.service <<'DIAG_EOF'
+[Unit]
+Description=Saman OS test diagnostic (test builds only)
+After=graphical.target
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -c 'sleep 150; { echo ===DIAG===; loginctl list-sessions; systemctl is-active gdm3; pgrep -a gnome-shell | head -2; journalctl -b --no-pager | grep -iE "gnome-shell|gdm|mutter" | grep -iE "error|crash|fail|segv|JS ERROR" | head -8; runuser -u saman -- env DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus XDG_RUNTIME_DIR=/run/user/1000 gsettings set org.gnome.desktop.session idle-delay 0; loginctl unlock-sessions; echo ===DIAG_END===; } > /dev/ttyS0 2>&1'
+[Install]
+WantedBy=multi-user.target
+DIAG_EOF
+  $CR /usr/bin/systemctl enable saman-test-diag.service >/dev/null 2>&1 || echo "WARN enable test-diag"
+fi
 # dbus-broker's launcher child dies with EPERM in this rootfs (its
 # reason is not yet pinned; the classic daemon is the Debian default
 # with the same packages and is far more forgiving). The broker's
@@ -136,6 +181,50 @@ $CR /usr/bin/systemctl mask dbus-broker.service >/dev/null 2>&1 || echo "WARN ma
 # itself declares — AFTER pam-auth-update has run.
 grep -q "pam_systemd.so" work/disk-rootfs/etc/pam.d/common-session || \
   printf 'session\toptional\tpam_systemd.so\n' >> work/disk-rootfs/etc/pam.d/common-session
+
+# More postinst work the extraction skips (both editions):
+# sudo on 26.10 is sudo-rs/sudo.ws; the /usr/bin/sudo alternatives
+# symlink is planted by postinst, so without it there is no sudo.
+[ -e work/disk-rootfs/usr/bin/sudo ] || ln -s sudo.ws work/disk-rootfs/usr/bin/sudo
+# openssh-server: sshd_config is ucf-generated by postinst and the
+# host keys likewise; without both, sshd fails instantly.
+if [ ! -f work/disk-rootfs/etc/ssh/sshd_config ]; then
+  printf 'Port 22\nPermitRootLogin no\nPasswordAuthentication yes\nKbdInteractiveAuthentication no\nUsePAM yes\nSubsystem sftp /usr/lib/openssh/sftp-server\n' \
+    > work/disk-rootfs/etc/ssh/sshd_config
+  chmod 644 work/disk-rootfs/etc/ssh/sshd_config
+fi
+$CR /usr/bin/ssh-keygen -A >/dev/null 2>&1 || echo "WARN ssh-keygen"
+
+# --- Saman OS Server edition (SAMAN_EDITION=server): headless,
+# with the Ofogheamn DNS + proxy + panel stack preinstalled ---
+if [ "${SAMAN_EDITION:-desktop}" = "server" ]; then
+  echo "SERVER EDITION: applying server-overlay"
+  cp -a server-overlay/. work/disk-rootfs/
+  $CR /usr/sbin/useradd --system --no-create-home --shell /usr/sbin/nologin ofodns 2>/dev/null || echo "NOTE ofodns user exists"
+  $CR /usr/bin/chown -R ofodns:ofodns /var/cache/ofogheamn-dns /var/log/ofogheamn-dns 2>/dev/null || echo "WARN chown ofodns dirs"
+  # The overlay's files carry the author's umask (0660 root:nogroup):
+  # the ofodns service user could not even read smartdns.conf and the
+  # service crash-looped with "Permission denied". Normalize: configs
+  # and lists world-readable, secrets stay tight, the TLS key is
+  # group-ofodns readable (smartdns reads it as ofodns).
+  find work/disk-rootfs/etc/ofogheamn-dns -type f -perm 0660 -exec chmod 0644 {} +
+  chmod 0600 work/disk-rootfs/etc/ofogheamn-dns/panel.conf \
+             work/disk-rootfs/etc/ofogheamn-dns/proxy-users.json \
+             work/disk-rootfs/etc/ofogheamn-dns/wg-server.key \
+             work/disk-rootfs/etc/ofogheamn-dns/wg0.conf 2>/dev/null || true
+  $CR /usr/bin/chown root:ofodns /etc/ofogheamn-dns/tls/privkey.pem 2>/dev/null || echo "WARN chown privkey"
+  chmod 0640 work/disk-rootfs/etc/ofogheamn-dns/tls/privkey.pem
+  $CR /usr/bin/systemctl mask gdm3.service >/dev/null 2>&1 || echo "WARN mask gdm3"
+  # The server's firewall policy belongs to the Ofogheamn stack, not
+  # the desktop nftables baseline.
+  $CR /usr/bin/systemctl disable nftables.service >/dev/null 2>&1 || echo "WARN disable nftables (server)"
+  $CR /usr/bin/systemctl set-default multi-user.target >/dev/null 2>&1 || echo "WARN set-default multi-user"
+  $CR /usr/bin/systemctl enable ssh.service >/dev/null 2>&1 || $CR /usr/bin/systemctl enable sshd.service >/dev/null 2>&1 || echo "WARN enable ssh"
+  # The name is "Saman OS" in EVERY edition (Saman, 2026-11-19);
+  # the server is a VARIANT of it, never a different name.
+  sed -i 's/^PRETTY_NAME=.*/PRETTY_NAME="Saman OS 2.0"/; s/^NAME=.*/NAME="Saman OS"/' work/disk-rootfs/usr/lib/os-release
+  grep -q '^VARIANT=' work/disk-rootfs/usr/lib/os-release || printf 'VARIANT="Server"\nVARIANT_ID=server\n' >> work/disk-rootfs/usr/lib/os-release
+fi
 
 # --- repair directory modes (LAST step before packing): dpkg-deb -x
 # creates package parent dirs under the caller's umask, and cp -a of

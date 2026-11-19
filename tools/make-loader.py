@@ -23,6 +23,19 @@ SEEDS = [
     # live-ISO mode: read the ISO, mount the squashfs, overlay tmpfs
     "kernel/fs/isofs/isofs.ko",
     "kernel/fs/overlayfs/overlay.ko",
+    # LUKS2 disk encryption (installer option): device-mapper + dm-crypt;
+    # the depmap walker pulls the crypto chain (aes/xts/sha) behind them.
+    "kernel/drivers/md/dm-mod.ko",
+    "kernel/drivers/md/dm-crypt.ko",
+    # boot-from-disk-ISO-file (v3.1): find an ISO file hosted on a
+    # Windows/internal partition — NTFS/FAT/exFAT readers, the NVMe
+    # and AHCI disk drivers, and loop (built-in, listed for intent).
+    "kernel/fs/ntfs3/ntfs3.ko",
+    "kernel/fs/fat/vfat.ko",
+    "kernel/fs/exfat/exfat.ko",
+    "kernel/drivers/nvme/host/nvme.ko",
+    "kernel/drivers/ata/ahci.ko",
+    "kernel/drivers/block/loop.ko",
 ]
 
 def load_depmap():
@@ -94,6 +107,65 @@ def main():
         return 1
     subprocess.run(["cp", bb_src, os.path.join(LOADER, "bin", "busybox")], check=True)
     os.chmod(os.path.join(LOADER, "bin", "busybox"), 0o755)
+
+    # --- cryptsetup for LUKS roots: copy the binary + its full NEEDED
+    # library closure (resolved against the product rootfs, no host
+    # execution) + the ELF interpreter, preserving in-rootfs paths. ---
+    disk_root = os.path.join(ROOT, "work", "disk-rootfs")
+    cs_src = os.path.join(disk_root, "usr", "sbin", "cryptsetup")
+    if os.path.exists(cs_src):
+        lib_dirs = [os.path.join(disk_root, "lib", "x86_64-linux-gnu"),
+                    os.path.join(disk_root, "usr", "lib", "x86_64-linux-gnu"),
+                    os.path.join(disk_root, "lib64")]
+
+        def find_lib(name, seen):
+            for d in lib_dirs:
+                p = os.path.join(d, name)
+                if os.path.exists(p):
+                    return p
+            return None
+
+        def needed_of(path):
+            try:
+                out = subprocess.run(["objdump", "-p", path], capture_output=True,
+                                     text=True, check=True).stdout
+            except Exception:
+                return []
+            return [l.split()[-1] for l in out.splitlines() if "NEEDED" in l]
+
+        queue = [cs_src]
+        copied = set()
+        while queue:
+            src = queue.pop()
+            real = os.path.realpath(src)
+            rel = os.path.relpath(real, disk_root)
+            if rel in copied:
+                continue
+            copied.add(rel)
+            dest = os.path.join(LOADER, rel)
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            subprocess.run(["cp", real, dest], check=True)
+            os.chmod(dest, 0o755)
+            for need in needed_of(real):
+                lp = find_lib(need, copied)
+                if lp:
+                    queue.append(lp)
+        # ELF interpreter symlink/path the kernel needs to exec it
+        interp = os.path.join(disk_root, "lib64", "ld-linux-x86-64.so.2")
+        if os.path.exists(interp):
+            rel = os.path.relpath(os.path.realpath(interp), disk_root)
+            dest = os.path.join(LOADER, rel)
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            if not os.path.exists(dest):
+                subprocess.run(["cp", os.path.realpath(interp), dest], check=True)
+                os.chmod(dest, 0o755)
+            link = os.path.join(LOADER, "lib64", "ld-linux-x86-64.so.2")
+            os.makedirs(os.path.dirname(link), exist_ok=True)
+            if not os.path.exists(link):
+                os.symlink("/" + rel, link)
+        print(f"cryptsetup closure: {len(copied)} files")
+    else:
+        print("NOTE: no cryptsetup in product rootfs (LUKS unlock unavailable)")
 
     names = []
     for modkey in order:

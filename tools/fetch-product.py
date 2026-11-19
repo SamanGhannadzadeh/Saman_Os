@@ -43,6 +43,37 @@ TARGETS = [
     "yaru-theme-sound",
     "fonts-ubuntu",
     "network-manager",
+    "openssh-server",
+    # Security/encryption maximum (Saman, 2026-11-19): LUKS2 disk
+    # encryption in the installer + loader, automatic security
+    # updates, nftables firewall, PAM password quality.
+    "cryptsetup",
+    "cryptsetup-bin",
+    # Everyday completeness (2026-11-19): the product shipped with
+    # NO web browser — a desktop cannot ask users to live without
+    # one. Epiphany (webkitgtk) is the GNOME-native choice that
+    # fits the extracted-rootfs model (Ubuntu's firefox/chromium
+    # are snap stubs). Plus the basic viewers every desktop needs.
+    # Desktop security pack (2026-11-19, Saman: «امنیتی‌تر»):
+    # usbguard = BadUSB/device control, zram-tools = compressed
+    # RAM swap (no secrets ever touch a disk swap), apparmor-utils
+    # = profile management for the enforced AppArmor baseline.
+    "usbguard",
+    "zram-tools",
+    "apparmor-utils",
+    # Saman Antivirus (2026-11-19): the OS's own antivirus uses
+    # ClamAV as its production engine when present, with the
+    # built-in hash engine as fallback.
+    "clamav",
+    "epiphany-browser",
+    "eog",
+    "evince",
+    "file-roller",
+    "gnome-text-editor",
+    "unattended-upgrades",
+    "nftables",
+    "iptables",
+    "libpam-pwquality",
     "xdg-desktop-portal-gnome",
     "ubuntu-minimal",
     "dash",
@@ -61,7 +92,146 @@ TARGETS = [
     "procps",
     "gnome-keyring",
     "libpam-gnome-keyring",
+    # Installer toolchain (step 3): partitioning, ESP formatting,
+    # GRUB for UEFI + BIOS and EFI boot entries.
+    "fdisk",
+    "dosfstools",
+    "grub-common",
+    "grub2-common",
+    "grub-efi-amd64",
+    "grub-efi-amd64-bin",
+    "grub-pc",
+    "grub-pc-bin",
+    "efibootmgr",
+    # --- FULL PAYLOAD (2026-11-19, Saman: «همهٔ چیزهایی که باید
+    # یک سیستم‌عامل خوب داشته باشد» + Windows-11-class completeness).
+    # Everything a complete everyday OS ships, verified one by one
+    # against the stonking main+universe index (108+17 names).
+    # GNOME suite:
+    "gnome-calendar", "gnome-contacts", "gnome-weather",
+    "gnome-maps", "gnome-music", "gnome-clocks", "gnome-characters",
+    "gnome-font-viewer", "gnome-disk-utility", "gnome-system-monitor",
+    "gnome-logs", "gnome-connections", "gnome-snapshot", "baobab",
+    "seahorse", "deja-dup", "simple-scan", "gnome-tweaks",
+    "gnome-software", "gnome-calculator", "totem", "rhythmbox",
+    "gnome-console", "gnome-remote-desktop", "gnome-power-manager",
+    # Office (LibreOffice full + Persian + Office-metric fonts):
+    "libreoffice-writer", "libreoffice-calc", "libreoffice-impress",
+    "libreoffice-draw", "libreoffice-gtk3", "libreoffice-l10n-fa",
+    "hunspell-fa", "hunspell-en-us", "fonts-liberation",
+    "fonts-crosextra-carlito", "fonts-crosextra-caladea",
+    # Media + codecs (what Ubuntu calls restricted extras, openly):
+    "vlc", "mpv", "celluloid", "ffmpeg", "gstreamer1.0-plugins-bad",
+    "gstreamer1.0-plugins-ugly", "gstreamer1.0-libav",
+    "libavcodec-extra", "mesa-va-drivers", "i965-va-driver",
+    # Creative:
+    "gimp", "inkscape", "shotwell", "loupe", "drawing", "kdenlive",
+    "flameshot", "xournalpp",
+    # Mail + comms + files over the wire:
+    "geary", "evolution", "filezilla", "remmina",
+    # Fonts + language (full Noto + Persian packs):
+    "fonts-noto", "fonts-noto-core", "fonts-noto-cjk",
+    "fonts-noto-color-emoji", "fonts-noto-mono", "fonts-dejavu",
+    "language-pack-fa", "language-pack-gnome-fa",
+    # Hardware completeness: firmware, microcode, drivers tooling,
+    # printing/scanning, bluetooth, mobile broadband, biometrics:
+    "linux-firmware", "intel-microcode", "amd64-microcode",
+    "ubuntu-drivers-common", "fwupd", "bolt", "power-profiles-daemon",
+    "switcheroo-control", "iio-sensor-proxy", "cups", "cups-browsed",
+    "printer-driver-all", "sane-utils", "bluez", "modemmanager",
+    "mobile-broadband-provider-info", "usb-modeswitch", "fprintd",
+    # App platform + everyday system tools:
+    "flatpak", "gnome-software-plugin-flatpak",
+    "software-properties-gtk", "git", "wget", "rsync", "zip",
+    "unzip", "7zip", "unrar-free", "openssh-client", "ntfs-3g",
+    "exfatprogs", "f2fs-tools", "xfsprogs", "btrfs-progs", "lvm2",
+    "mdadm", "smartmontools", "nvme-cli", "hdparm", "lm-sensors",
+    "wireguard-tools", "gparted", "gnome-boxes",
+    # Accessibility (a good OS ships these, like Narrator & co):
+    "orca", "onboard", "espeak-ng", "speech-dispatcher",
+    # The small games Ubuntu ships:
+    "gnome-mines", "gnome-mahjongg", "gnome-sudoku", "aisleriot",
+    "gnome-chess", "quadrapassel",
+    # VPN profiles in NetworkManager + gaming:
+    "network-manager-openvpn", "network-manager-openconnect",
+    "gamemode", "mangohud",
+    "pavucontrol", "pipewire", "wireplumber",
+    "xdg-desktop-portal-gtk",
+    # --- WAVE 2 (2026-11-19): gaps from the Windows 11 (26H2 /
+    # 25H2 — same servicing branch) inventory research, mapped to
+    # their Saman OS equivalents:
+    # Snipping Tool OCR -> tesseract (+Persian), To Do -> Endeavour,
+    # Sound Recorder -> GNOME Sound Recorder, clipboard history
+    # (Win+V) -> CopyQ, Get Help -> Yelp + GNOME user docs,
+    # inbox image extensions (HEIF/WebP) -> loaders, screen
+    # recording beyond the shell's -> OBS + SimpleScreenRecorder,
+    # OneDrive sync client (optional use).
+    "tesseract-ocr", "tesseract-ocr-fas", "endeavour", "onedrive",
+    "gnome-sound-recorder", "copyq", "yelp", "gnome-user-docs",
+    "webp-pixbuf-loader", "libheif1", "obs-studio",
+    "simplescreenrecorder",
+    # --- WAVE 3 (2026-11-19, Saman: «از قابلیت‌های ویندوز
+    # استفاده کن»): Windows platform features whose equivalents
+    # are genuinely useful here —
+    # Phone Link (GNOME-native) -> GSConnect (replaces kdeconnect:
+    # no KDE stack on a GNOME OS, shell-integrated pairing),
+    # WSL-style distro containers -> distrobox,
+    # Family / screen-time (also gold for the school) -> malcontent,
+    # gaming-peripheral control (the owner's G923 world) ->
+    # input-remapper + solaar (Logitech manager).
+    "gnome-shell-extension-gsconnect", "distrobox", "malcontent",
+    "input-remapper", "solaar",
 ]
+
+# --- Server edition (2026-11-19): a REAL lean server closure.
+# Saman caught the old "server" being the full desktop with GNOME
+# masked (only 0.02 GB lighter). The server gets its own minimal
+# target list: no GNOME, no desktop, just the system, networking,
+# SSH and what the Ofogheamn stack (overlay binaries) needs.
+SERVER_TARGETS = [
+    "linux-modules-7.3.0-10-generic",
+    "linux-modules-extra-7.3.0-10-generic",
+    "systemd",
+    "systemd-sysv",
+    "libpam-systemd",
+    "systemd-resolved",
+    "udev",
+    "kmod",
+    "dbus",
+    "bash",
+    "sudo",
+    "network-manager",
+    "openssh-server",
+    "openssh-client",
+    "python3",
+    "curl",
+    "ca-certificates",
+    "iptables",
+    "nftables",
+    "wireguard-tools",
+    "iproute2",
+    "iputils-ping",
+    "procps",
+    "locales",
+    "tzdata",
+    "nano",
+    "less",
+    "fail2ban",
+    "unattended-upgrades",
+    "grub2-common",
+    "grub-efi-amd64",
+    "grub-efi-amd64-bin",
+    "grub-pc",
+    "grub-pc-bin",
+    "efibootmgr",
+]
+
+EDITION = os.environ.get("SAMAN_EDITION", "desktop")
+if EDITION == "server":
+    TARGETS = SERVER_TARGETS
+    OUT_NAME = "server-packages.txt"
+else:
+    OUT_NAME = "product-packages.txt"
 
 # Virtual-package preferences (dep name -> real package to prefer).
 VIRTUAL_PREF = {
@@ -185,7 +355,7 @@ def main():
             f.write(data)
         print(f"saved: {dest}", flush=True)
     print(f"TOTAL download size: {total/1e6:.1f} MB", flush=True)
-    with open(os.path.join(CACHE, "product-packages.txt"), "w") as f:
+    with open(os.path.join(CACHE, OUT_NAME), "w") as f:
         for name in sorted(wanted):
             f.write(f"{name} {wanted[name]['Version']}\n")
     print("DONE", flush=True)

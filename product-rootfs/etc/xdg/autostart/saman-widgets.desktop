@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Saman Widgets
+Name[fa]=ویجت‌های سامان
+Comment=Desktop widgets: Jalali clock, calendar, system status
+Exec=saman-widgets
+Icon=preferences-desktop-wallpaper
+Categories=Utility;
+Terminal=false

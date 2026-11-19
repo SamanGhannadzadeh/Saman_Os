@@ -38,7 +38,19 @@ menuentry "Saman OS - Live (safe graphics)" {
 EOF
 
 mkdir -p build
-grub-mkrescue -o build/saman-os-live.iso "$STAGE" 2>&1 | tail -2
+# NOT grub-mkrescue: from the extracted iso-root tree it silently
+# emits ISOs with no El Torito record (proven 2026-11-19).
+# make-bootable-iso.sh builds the boot images by hand and
+# verifies the boot record before declaring success.
+bash tools/make-bootable-iso.sh build/saman-os-live.iso
 ls -la build/saman-os-live.iso
 python3 -c "import os; print(f'ISO size: {os.path.getsize(\"build/saman-os-live.iso\")/1e9:.3f} GB')"
+# Download artifacts (2026-11-19, Saman's order): every ISO ships
+# with its SHA-256 sums file and a .torrent so the release page,
+# the archive.org mirror and torrent swarms all carry the same,
+# verifiable file.
+(cd build && sha256sum saman-os-live.iso > SHA256SUMS.txt)
+python3 tools/make-torrent.py build/saman-os-live.iso \
+    "Saman OS — https://github.com/saman-ghannadzadeh/saman-os" \
+    | tee build/magnet.txt
 echo "BUILD_ISO_OK"

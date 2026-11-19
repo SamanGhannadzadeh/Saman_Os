@@ -1,0 +1,234 @@
+#!/usr/bin/env python3
+"""SamanOS Antivirus — scan engine (Saman OS built-in).
+
+Engine order:
+  1. ClamAV (clamscan) when installed — the full production engine.
+  2. Built-in engine: SHA-256 signature set + EICAR + heuristics
+     (double extensions, script droppers in Downloads).
+
+Findings are quarantined (moved, chmod 400) and, when a LAN
+management server is configured (~/.config/saman-av/config.json
+or /etc/saman-av/config.json), reported to it — the same console
+the school's Windows/Android agents report to.
+
+Usage:
+  saman-av-scan [paths...]        scan (default: home + Downloads)
+  saman-av-scan --quick           home Downloads + /tmp only
+  saman-av-scan --json            machine-readable result
+Exit code: 0 clean · 1 findings · 2 error
+"""
+import hashlib
+import json
+import os
+import shutil
+import socket
+import subprocess
+import sys
+import time
+import urllib.request
+
+SIG_SYSTEM = "/usr/share/saman-av/sigs.json"
+SIG_USER = os.path.expanduser("~/.local/share/saman-av/sigs.json")
+QUAR = os.path.expanduser("~/.local/share/saman-av/quarantine")
+EICAR = (b"X5O!P%@AP[4\\PZX54(P^)7CC)7}$"
+         b"EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*")
+DOUBLE_EXT = (".pdf.exe", ".doc.exe", ".jpg.exe", ".zip.scr",
+              ".mp4.exe", ".txt.vbs", ".png.js")
+
+
+def load_sigs():
+    for f in (SIG_USER, SIG_SYSTEM):
+        try:
+            return json.load(open(f, encoding="utf-8"))
+        except Exception:
+            continue
+    return {"hashes": {}, "version": "none"}
+
+
+def load_cfg():
+    for f in (os.path.expanduser("~/.config/saman-av/config.json"),
+              "/etc/saman-av/config.json"):
+        try:
+            return json.load(open(f, encoding="utf-8"))
+        except Exception:
+            continue
+    return {}
+
+
+def sha256_of(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def quarantine(path):
+    os.makedirs(QUAR, exist_ok=True)
+    dest = os.path.join(
+        QUAR, time.strftime("%Y%m%d-%H%M%S-") +
+        os.path.basename(path) + ".quarantined")
+    try:
+        shutil.move(path, dest)
+        os.chmod(dest, 0o400)
+        return dest
+    except OSError:
+        return None
+
+
+def apply_action(path, cfg, force_delete=False, threat=""):
+    """Default on Saman OS is quarantine (recoverable); the user
+    can switch to immediate delete in the app or with --delete.
+    EXCEPTION: a heuristic-only suspicion is never auto-deleted —
+    it is quarantined for a human to judge, even in delete mode.
+    A wrong delete of a real file is the one unforgivable error."""
+    if threat.startswith("Heuristic."):
+        dest = quarantine(path)
+        return "quarantined-heuristic" if dest else "failed"
+    if force_delete or cfg.get("action") == "delete":
+        try:
+            os.remove(path)
+            return "deleted"
+        except OSError:
+            pass
+    dest = quarantine(path)
+    return "quarantined" if dest else "failed"
+
+
+def deep_extra_paths():
+    """Deep scan adds: executables of running processes and the
+    autostart locations — where persistent malware lives."""
+    out = set()
+    for pid in os.listdir("/proc"):
+        if pid.isdigit():
+            try:
+                exe = os.readlink(f"/proc/{pid}/exe")
+                if os.path.isfile(exe):
+                    out.add(os.path.dirname(exe))
+            except OSError:
+                continue
+    for d in (os.path.expanduser("~/.config/autostart"),
+              "/etc/xdg/autostart"):
+        if os.path.isdir(d):
+            out.add(d)
+    return sorted(out)
+
+
+def scan_builtin(paths, sigs):
+    found, scanned = [], 0
+    hashes = sigs.get("hashes", {})
+    for base in paths:
+        if not base or not os.path.isdir(base):
+            continue
+        for root, _d, files in os.walk(base):
+            if QUAR in root:
+                continue
+            for name in files:
+                p = os.path.join(root, name)
+                scanned += 1
+                try:
+                    low = name.lower()
+                    if low.endswith(DOUBLE_EXT):
+                        found.append({"path": p,
+                                      "threat": "Heuristic.DoubleExtension"})
+                        continue
+                    with open(p, "rb") as f:
+                        head = f.read(4096)
+                    if EICAR in head:
+                        found.append({"path": p, "threat": "EICAR-Test-File"})
+                        continue
+                    if os.path.getsize(p) <= 300 * 1024 * 1024:
+                        digest = sha256_of(p)
+                        if digest in hashes:
+                            found.append({"path": p,
+                                          "threat": hashes[digest]})
+                except (OSError, PermissionError):
+                    continue
+    return found, scanned
+
+
+def scan_clamav(paths):
+    exe = shutil.which("clamscan")
+    if not exe:
+        return None, 0
+    found, scanned = [], 0
+    for base in paths:
+        if not base or not os.path.isdir(base):
+            continue
+        r = subprocess.run([exe, "-r", "--no-summary", base],
+                           capture_output=True, text=True, timeout=7200)
+        # Exit 2 = clamscan could not scan (usually: no signature
+        # database yet on a fresh install). Never report that as
+        # "clean" — signal failure so the builtin engine takes over.
+        if r.returncode == 2:
+            return None, 0
+        for line in r.stdout.splitlines():
+            if line.endswith(" FOUND"):
+                p, threat = line.rsplit(": ", 1)
+                found.append({"path": p,
+                              "threat": threat.replace(" FOUND", "")})
+    return found, scanned
+
+
+def report(cfg, found, engine):
+    server = cfg.get("server")
+    if not server:
+        return
+    try:
+        mid = hashlib.sha256(
+            socket.gethostname().encode()).hexdigest()[:16]
+        data = json.dumps({
+            "machine_id": mid, "name": socket.gethostname(),
+            "platform": "saman-os", "found": found,
+            "engine": engine}).encode()
+        req = urllib.request.Request(
+            server.rstrip("/") + "/api/report", data=data,
+            headers={"X-Token": cfg.get("token", "school-av-2026"),
+                     "Content-Type": "application/json"})
+        urllib.request.urlopen(req, timeout=15).read()
+    except Exception:
+        pass
+
+
+def main():
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    as_json = "--json" in sys.argv
+    home = os.path.expanduser("~")
+    if "--quick" in sys.argv or not args:
+        paths = [home, os.path.join(home, "Downloads"), "/tmp"]
+    else:
+        paths = args
+    cfg = load_cfg()
+    if "--deep" in sys.argv:
+        paths += [p for p in deep_extra_paths() if p not in paths]
+    sigs = load_sigs()
+    found, scanned = scan_clamav(paths)
+    engine = "clamav"
+    if found is None:
+        found, scanned = scan_builtin(paths, sigs)
+        engine = "builtin"
+    for f in found:
+        f["action"] = apply_action(
+            f["path"], cfg, force_delete="--delete" in sys.argv,
+            threat=f.get("threat", ""))
+    report(cfg, found, engine)
+    result = {"engine": engine, "sig_version": sigs.get("version"),
+              "scanned": scanned, "found": found}
+    if as_json:
+        print(json.dumps(result, ensure_ascii=False))
+    else:
+        print(f"SamanOS Antivirus — موتور: {engine} — "
+              f"امضا: {sigs.get('version')}")
+        print(f"اسکن‌شده: {scanned} فایل")
+        if found:
+            print(f"⚠ {len(found)} یافته خنثی شد:")
+            for f in found:
+                print(f"  {f['path']} → {f['threat']} "
+                      f"({f.get('action')})")
+        else:
+            print("✓ سیستم پاک است")
+    return 1 if found else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

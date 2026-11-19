@@ -23,7 +23,7 @@ VERSION_FILE = "/usr/lib/saman-os/VERSION"
 CACHE = "/var/cache/saman-updater"
 BACKUP_DIR = "/var/lib/saman-updater"
 LOG = "/var/log/saman-updater.log"
-DEFAULT_REPO = "sama19673546-web/saman-os"
+DEFAULT_REPO = "saman-ghannadzadeh/saman-os"
 
 
 def log(msg):

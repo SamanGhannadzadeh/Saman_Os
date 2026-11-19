@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=ساعت سامان
+Name[fa]=ساعت سامان
+Comment=ساعت تهران و جهان، کرونومتر و تایمر
+Exec=/usr/bin/saman-clock
+Icon=clock
+Terminal=false
+Categories=Utility

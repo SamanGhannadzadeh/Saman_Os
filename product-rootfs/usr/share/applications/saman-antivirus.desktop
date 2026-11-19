@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=SamanOS Antivirus
+Name[fa]=آنتی‌ویروس سامان او‌اس
+Comment=Built-in antivirus: scan, quarantine, LAN reporting
+Comment[fa]=آنتی‌ویروس داخلی سیستم‌عامل سامان
+Exec=saman-antivirus
+Icon=security-high
+Terminal=false
+Categories=System;Security;

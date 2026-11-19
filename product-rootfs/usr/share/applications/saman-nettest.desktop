@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Saman NetTest
+Name[fa]=تست پینگ گیمینگ
+Comment=Gaming ping and DNS test
+Exec=saman-nettest
+Icon=network-wireless
+Terminal=false
+Categories=Network;Utility;

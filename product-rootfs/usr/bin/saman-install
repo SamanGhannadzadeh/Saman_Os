@@ -1,0 +1,245 @@
+#!/bin/bash
+# Saman OS installer — run inside the live session:
+#   sudo saman-install /dev/sdX              whole (empty) disk
+#   sudo saman-install --alongside /dev/sdX  into the largest free gap,
+#                                            sharing the existing ESP
+# Whole-disk layout (GPT): 1 MiB BIOS-boot + 512 MiB ESP + root (rest),
+# so the installed system boots on both UEFI and BIOS machines.
+# The root partition is labelled SAMANOS; the Saman OS loader finds
+# it by its content marker, no UUID bookkeeping needed.
+set -u
+umask 022
+
+ISO_DIR=/mnt/iso
+SRC=/tmp/saman-src
+TARGET=/target
+
+die() { echo "saman-install: $*" >&2; exit 1; }
+[ "$(id -u)" = "0" ] || die "با sudo اجرا کنید: sudo saman-install ..."
+[ -f "$ISO_DIR/casper/filesystem.squashfs" ] || die "رسانهٔ زنده پیدا نشد ($ISO_DIR)"
+
+MODE=whole
+[ "${1:-}" = "--alongside" ] && { MODE=alongside; shift; }
+
+# --- Optional LUKS2 full-disk encryption (Saman, 2026-11-19:
+# "maximum encryption like Kali"). Whole-disk mode only for now.
+# SAMAN_ENCRYPT=1 + SAMAN_LUKS_PASSPHRASE for unattended installs. ---
+ENCRYPT="${SAMAN_ENCRYPT:-}"
+if [ -z "$ENCRYPT" ] && [ "${SAMAN_INSTALL_YES:-}" != "1" ]; then
+  printf 'کل دیسک رمزگذاری شود؟ (LUKS2) (y/N): '
+  read -r a </dev/tty 2>/dev/null || a=""
+  case "$a" in y|Y|yes) ENCRYPT=1 ;; *) ENCRYPT=0 ;; esac
+fi
+[ -n "$ENCRYPT" ] || ENCRYPT=0
+if [ "$ENCRYPT" = "1" ] && [ "$MODE" != "whole" ]; then
+  die "رمزگذاری فعلاً فقط در نصب کامل روی کل دیسک ممکن است"
+fi
+LUKS_PASS="${SAMAN_LUKS_PASSPHRASE:-}"
+if [ "$ENCRYPT" = "1" ] && [ -z "$LUKS_PASS" ]; then
+  printf 'گذرواژهٔ رمزگذاری دیسک: ' >/dev/tty
+  stty -echo </dev/tty 2>/dev/null; read -r LUKS_PASS </dev/tty; stty echo </dev/tty 2>/dev/null; echo >/dev/tty
+  printf 'تکرار گذرواژه: ' >/dev/tty
+  stty -echo </dev/tty 2>/dev/null; read -r P2 </dev/tty; stty echo </dev/tty 2>/dev/null; echo >/dev/tty
+  { [ -n "$LUKS_PASS" ] && [ "$LUKS_PASS" = "$P2" ]; } || die "گذرواژه‌ها یکی نیستند یا خالی‌اند"
+fi
+DISK="${1:-}"
+[ -n "$DISK" ] && [ -b "$DISK" ] || die "دیسک هدف را بدهید، مثل /dev/sda"
+case "$DISK" in /dev/sr*) die "دیسک هدف نمی‌تواند درایو نوری باشد" ;; esac
+LIVE_SRC="$(findmnt -no SOURCE / 2>/dev/null || true)"
+case "$LIVE_SRC" in "$DISK"*) die "این دیسک، دیسک سیستم زنده است" ;; esac
+
+part() { # partition device: nvme0n1p2 style vs sda2 style
+  case "$1" in *[0-9]) echo "$1p$2" ;; *) echo "$1$2" ;; esac
+}
+
+SIZE_GB=$(( $(blockdev --getsize64 "$DISK") / 1000000000 ))
+echo "دیسک هدف: $DISK (${SIZE_GB} GB) — حالت: $MODE"
+if [ "${SAMAN_INSTALL_YES:-}" != "1" ]; then
+  if [ "$MODE" = whole ]; then
+    echo "هشدار: همهٔ داده‌های این دیسک پاک می‌شود."
+  else
+    echo "فقط در فضای خالی دیسک پارتیشن تازه ساخته می‌شود؛ پارتیشن‌های موجود دست نمی‌خورند."
+  fi
+  printf "برای ادامه نام دیسک را دوباره بنویسید (%s): " "$DISK"
+  read -r ans
+  [ "$ans" = "$DISK" ] || die "لغو شد"
+fi
+
+ESP=""; ROOT=""; BOOT=""
+if [ "$MODE" = whole ]; then
+  [ "$SIZE_GB" -ge 8 ] || die "دیسک حداقل ۸ گیگابایت می‌خواهد"
+  if [ "$ENCRYPT" = "1" ]; then
+    # ESP + unencrypted /boot (GRUB must read the kernel) + LUKS root
+    sfdisk --wipe always "$DISK" >/dev/null <<EOF
+label: gpt
+size=1MiB,type=21686148-6449-6E6F-744E-656564454649
+start=,size=512MiB,type=C12A7328-F81F-11D2-BA4B-00A0C93EC93B
+start=,size=1GiB,type=0FC63DAF-8483-4772-8E79-3D69D8477DE4
+type=0FC63DAF-8483-4772-8E79-3D69D8477DE4
+EOF
+    ESP="$(part "$DISK" 2)"; BOOT="$(part "$DISK" 3)"; ROOTDEV="$(part "$DISK" 4)"
+    mkfs.ext4 -q -L SAMANBOOT "$BOOT" >/dev/null || die "ساخت پارتیشن بوت ناموفق بود"
+    echo "در حال رمزگذاری دیسک (LUKS2)..."
+    printf '%s' "$LUKS_PASS" | cryptsetup luksFormat --type luks2 \
+      --cipher aes-xts-plain64 --key-size 512 --hash sha512 \
+      --pbkdf argon2id "$ROOTDEV" --key-file - || die "رمزگذاری LUKS ناموفق بود"
+    printf '%s' "$LUKS_PASS" | cryptsetup open "$ROOTDEV" samanos-root --key-file - \
+      || die "باز کردن LUKS ناموفق بود"
+    ROOT=/dev/mapper/samanos-root
+    LUKS_UUID="$(blkid -s UUID -o value "$ROOTDEV")"
+  else
+    sfdisk --wipe always "$DISK" >/dev/null <<EOF
+label: gpt
+size=1MiB,type=21686148-6449-6E6F-744E-656564454649
+start=,size=512MiB,type=C12A7328-F81F-11D2-BA4B-00A0C93EC93B
+type=0FC63DAF-8483-4772-8E79-3D69D8477DE4
+EOF
+    ESP="$(part "$DISK" 2)"; ROOT="$(part "$DISK" 3)"
+  fi
+  mkfs.vfat -F 32 -n SAMANESP "$ESP" >/dev/null || die "ساخت ESP ناموفق بود"
+else
+  # Reuse the existing ESP (never formatted) and put the root into
+  # the largest unallocated gap (>= 24 GiB — the full-payload
+  # production system needs real room, raised 2026-11-20).
+  ESP="$(blkid -o device -t TYPE=vfat "$DISK"* 2>/dev/null | while read -r p; do
+           [ "$(sfdisk --part-type "$DISK" "${p##*[!0-9]}" 2>/dev/null)" = \
+             "C12A7328-F81F-11D2-BA4B-00A0C93EC93B" ] && { echo "$p"; break; }
+         done)"
+  [ -n "$ESP" ] || die "پارتیشن EFI روی این دیسک پیدا نشد"
+  read -r GSTART GSIZE <<<"$(python3 - "$DISK" <<'PYEOF'
+import json, subprocess, sys
+out = subprocess.run(["sfdisk", "--json", sys.argv[1]], capture_output=True, text=True).stdout
+pt = json.loads(out)["partitiontable"]
+parts = sorted(pt["partitions"], key=lambda p: p["start"])
+end = pt.get("firstlba", 2048)
+best = (0, 0)
+for p in parts:
+    gap = p["start"] - end
+    if gap > best[1]:
+        best = (end, gap)
+    end = max(end, p["start"] + p["size"])
+last = pt["lastlba"] + 1
+gap = last - end
+if gap > best[1]:
+    best = (end, gap)
+print(best[0], best[1])
+PYEOF
+)"
+  [ -n "${GSIZE:-}" ] && [ "$GSIZE" -ge 50331648 ] || die "فضای خالی کافی (۲۴ گیگابایت) روی دیسک نیست"
+  echo "start=$GSTART,size=$GSIZE,type=0FC63DAF-8483-4772-8E79-3D69D8477DE4" \
+    | sfdisk --append "$DISK" >/dev/null || die "ساخت پارتیشن ناموفق بود"
+  ROOT="$(sfdisk -J "$DISK" | python3 -c 'import json,sys; ps=json.load(sys.stdin)["partitiontable"]["partitions"]; print(max(ps, key=lambda p: p["start"])["node"])')"
+fi
+
+mkfs.ext4 -q -L SAMANOS "$ROOT" >/dev/null || die "ساخت فایل‌سیستم ریشه ناموفق بود"
+mkdir -p "$TARGET" "$SRC"
+mount "$ROOT" "$TARGET" || die "مانت ریشه ناموفق بود"
+if [ -n "$BOOT" ]; then
+  mkdir -p "$TARGET/boot"
+  mount "$BOOT" "$TARGET/boot" || die "مانت پارتیشن بوت ناموفق بود"
+fi
+mount -o loop,ro -t squashfs "$ISO_DIR/casper/filesystem.squashfs" "$SRC" || die "مانت سورس ناموفق بود"
+echo "در حال کپی سیستم ..."
+cp -a "$SRC"/. "$TARGET"/ || die "کپی سیستم ناموفق بود"
+mkdir -p "$TARGET/boot"
+cp "$ISO_DIR/casper/vmlinuz" "$TARGET/boot/vmlinuz" || die "کپی کرنل ناموفق بود"
+# The medium carries the loader initrd as casper/initrd.img; the
+# installed GRUB entry expects it under the product name. A missing
+# initrd must never slip through silently again.
+cp "$ISO_DIR/casper/initrd.img" "$TARGET/boot/product-initrd.img" || die "کپی initrd ناموفق بود"
+umount "$SRC"
+
+: > "$TARGET/etc/machine-id"
+ESP_UUID="$(blkid -s UUID -o value "$ESP")"
+ROOT_UUID="$(blkid -s UUID -o value "$ROOT")"
+if [ "$ENCRYPT" = "1" ]; then
+  BOOT_UUID="$(blkid -s UUID -o value "$BOOT")"
+  cat > "$TARGET/etc/fstab" <<EOF
+/dev/mapper/samanos-root / ext4 defaults 0 1
+UUID=$BOOT_UUID /boot ext4 defaults 0 2
+UUID=$ESP_UUID /boot/efi vfat umask=0077 0 2
+EOF
+  printf 'samanos-root UUID=%s none luks\n' "$LUKS_UUID" > "$TARGET/etc/crypttab"
+else
+  cat > "$TARGET/etc/fstab" <<EOF
+UUID=$ROOT_UUID / ext4 defaults 0 1
+UUID=$ESP_UUID /boot/efi vfat umask=0077 0 2
+EOF
+fi
+mkdir -p "$TARGET/boot/efi"
+mount "$ESP" "$TARGET/boot/efi" || die "مانت ESP ناموفق بود"
+
+for d in dev proc sys run; do mount --bind "/$d" "$TARGET/$d"; done
+echo "در حال نصب بوت‌لودر ..."
+chroot "$TARGET" grub-install --target=x86_64-efi --efi-directory=/boot/efi \
+  --boot-directory=/boot --bootloader-id=SamanOS || die "نصب GRUB (UEFI) ناموفق بود"
+chroot "$TARGET" grub-install --target=x86_64-efi --efi-directory=/boot/efi \
+  --boot-directory=/boot --removable || die "نصب GRUB (removable) ناموفق بود"
+if [ "$MODE" = whole ]; then
+  chroot "$TARGET" grub-install --target=i386-pc --boot-directory=/boot "$DISK" \
+    || die "نصب GRUB (BIOS) ناموفق بود"
+fi
+
+# GRUB face: the Saman wallpaper behind the boot menu — the design
+# language starts at the boot screen, and dual-boot users see a
+# proper "Saman OS / Windows" choice, not a bare text list.
+cp /usr/share/backgrounds/saman-os.png "$TARGET/boot/grub/saman-bg.png" 2>/dev/null || true
+{
+  echo "set timeout=5"
+  echo "load_env"
+  echo 'if [ "${next_entry}" ]; then set default="${next_entry}"; set next_entry=; save_env next_entry; fi'
+  echo "insmod png"
+  echo "insmod gfxterm"
+  echo "terminal_output gfxterm"
+  echo "background_image \$prefix/saman-bg.png"
+  echo "set color_normal=white/black"
+  echo "set menu_color_normal=white/black"
+  echo "set menu_color_highlight=black/white"
+  echo 'menuentry "Saman OS" {'
+  echo "  linux /boot/vmlinuz console=tty0 console=ttyS0 quiet splash"
+  echo "  initrd /boot/product-initrd.img"
+  echo "}"
+  if [ -f "$TARGET/boot/efi/EFI/Microsoft/Boot/bootmgfw.efi" ]; then
+    echo 'menuentry "Windows" {'
+    echo "  search --set=root --fs-uuid $ESP_UUID"
+    echo "  chainloader /EFI/Microsoft/Boot/bootmgfw.efi"
+    echo "}"
+  fi
+} > "$TARGET/boot/grub/grub.cfg"
+
+# --- Optional: Ofogheamn DNS panel (Saman's decision, 2026-11-19):
+# NOT baked into the image and never mandatory. When opted in, the
+# project is DOWNLOADED from GitHub during install and staged; the
+# actual setup runs on first boot (saman-dns-firstboot.service),
+# because the project's installer needs a live systemd. A failed
+# download only skips the panel, never the OS install. Later install
+# is always possible with the `saman-dns-install` command. ---
+WANT_DNS="${SAMAN_WITH_DNS:-}"
+if [ -z "$WANT_DNS" ] && [ "${SAMAN_INSTALL_YES:-}" != "1" ]; then
+  printf 'پنل DNS افق امن هم گرفته شود؟ از گیت‌هاب دانلود و در اولین بوت نصب می‌شود (y/N): '
+  read -r ans </dev/tty 2>/dev/null || ans=""
+  case "$ans" in y|Y|yes) WANT_DNS=1 ;; *) WANT_DNS=0 ;; esac
+fi
+if [ "$WANT_DNS" = "1" ]; then
+  echo "در حال دریافت پنل DNS از گیت‌هاب..."
+  if curl -fsSL --max-time 900 -o "$TARGET/tmp/ofogheamn.tar.gz" \
+       https://github.com/saman-ghannadzadeh/Ofogheamn_Dns_Project_Gaming/archive/refs/heads/main.tar.gz; then
+    mkdir -p "$TARGET/opt/ofogheamn-installer"
+    tar -xzf "$TARGET/tmp/ofogheamn.tar.gz" -C "$TARGET/opt/ofogheamn-installer" --strip-components=1 \
+      && touch "$TARGET/etc/saman-dns-pending" \
+      && echo "پنل DNS گرفته شد؛ در اولین بوت نصب می‌شود." \
+      || echo "هشدار: باز کردن بستهٔ پنل نشد؛ نصب سیستم‌عامل ادامه پیدا می‌کند."
+    rm -f "$TARGET/tmp/ofogheamn.tar.gz"
+  else
+    echo "هشدار: دانلود پنل DNS نشد؛ نصب سیستم‌عامل ادامه پیدا می‌کند. بعداً با دستور saman-dns-install می‌توانید بگیریدش."
+  fi
+fi
+
+for d in run sys proc dev; do umount "$TARGET/$d" 2>/dev/null; done
+umount "$TARGET/boot/efi" 2>/dev/null
+[ -n "$BOOT" ] && umount "$TARGET/boot" 2>/dev/null
+umount "$TARGET" 2>/dev/null
+[ "$ENCRYPT" = "1" ] && cryptsetup close samanos-root 2>/dev/null
+sync
+echo "SAMAN_INSTALL_OK disk=$DISK root=$ROOT esp=$ESP"
+echo "نصب تمام شد. رسانهٔ نصب را بردارید و سیستم را راه‌اندازی مجدد کنید."

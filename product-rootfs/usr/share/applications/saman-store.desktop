@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=اپ‌استور سامان
+Name[fa]=اپ‌استور سامان
+Comment=نصب برنامه از مخزن اوبونتو
+Exec=/usr/bin/saman-store
+Icon=system-software-install
+Terminal=false
+Categories=System

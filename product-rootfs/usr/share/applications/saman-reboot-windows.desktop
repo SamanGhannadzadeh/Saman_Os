@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=راه‌اندازی مجدد به ویندوز
+Name[en]=Reboot into Windows
+Comment=در سیستم‌های دوال‌بوت، مستقیم به ویندوز راه‌اندازی مجدد می‌کند
+Exec=pkexec /usr/bin/saman-reboot-windows
+Icon=system-reboot
+Terminal=false
+Categories=System;

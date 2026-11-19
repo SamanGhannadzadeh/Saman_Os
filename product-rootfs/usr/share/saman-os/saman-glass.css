@@ -1,0 +1,28 @@
+/* Saman OS — shared app glass (the one template, in app form).
+   Values are the theme's own: navy glass, white edge, radius
+   10/14, accent #1f6feb. Loaded by the Saman apps themselves. */
+window.saman-glass {
+  background: rgba(16, 22, 44, 0.86);
+}
+.saman-card {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 14px;
+  padding: 12px 14px;
+}
+.saman-title { font-size: 11pt; font-weight: 700; color: rgba(255,255,255,0.65); }
+.saman-big { font-size: 30pt; font-weight: 800; }
+.saman-mid { font-size: 14pt; font-weight: 700; }
+.saman-dim { color: rgba(255, 255, 255, 0.55); }
+.saman-today {
+  background-color: #1f6feb; color: #ffffff;
+  border-radius: 10px; font-weight: 800;
+}
+.saman-cell { border-radius: 10px; padding: 3px 0; }
+.saman-cell:hover { background: rgba(255, 255, 255, 0.10); }
+button.saman-chip {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 10px;
+}
+button.saman-chip:hover { background: rgba(255, 255, 255, 0.13); }

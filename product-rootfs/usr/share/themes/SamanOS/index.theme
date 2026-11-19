@@ -1,0 +1,7 @@
+[X-GNOME-Metatheme]
+Name=SamanOS
+Comment=Saman OS glass theme (Yaru base, Saman glass overrides)
+Encoding=UTF-8
+GtkTheme=SamanOS
+IconTheme=Yaru
+CursorTheme=Yaru

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=تقویم سامان
+Name[fa]=تقویم سامان
+Comment=تقویم جلالی
+Exec=/usr/bin/saman-calendar
+Icon=office-calendar
+Terminal=false
+Categories=Utility

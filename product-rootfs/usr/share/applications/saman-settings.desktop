@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=تنظیمات سامان
+Name[fa]=تنظیمات سامان
+Comment=دروازهٔ تنظیمات سیستم
+Exec=/usr/bin/saman-settings
+Icon=preferences-system
+Terminal=false
+Categories=Settings

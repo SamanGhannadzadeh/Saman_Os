@@ -1,0 +1,46 @@
+#!/bin/bash
+# saman-dns-install — fetch the Ofogheamn gaming DNS + panel from
+# GitHub and install it on this machine. The panel is NOT part of the
+# OS image (Saman's decision, 2026-11-19): it is downloaded on demand,
+# either during OS installation (staged for first boot) or later with
+# this command.
+#   saman-dns-install           download from GitHub and install
+#   saman-dns-install --staged  install the copy staged at
+#                               /opt/ofogheamn-installer (first boot)
+set -u
+REPO_TARBALL="https://github.com/saman-ghannadzadeh/Ofogheamn_Dns_Project_Gaming/archive/refs/heads/main.tar.gz"
+STAGED=/opt/ofogheamn-installer
+
+if [ "$(id -u)" != "0" ]; then
+  echo "این دستور به دسترسی مدیر نیاز دارد: sudo saman-dns-install" >&2
+  exit 1
+fi
+
+SRC=""
+if [ "${1:-}" = "--staged" ] && [ -f "$STAGED/install.sh" ]; then
+  SRC="$STAGED"
+else
+  TMP=$(mktemp -d)
+  echo "در حال دریافت پروژهٔ DNS افق امن از گیت‌هاب..."
+  if ! curl -fsSL --max-time 900 -o "$TMP/ofogheamn.tar.gz" "$REPO_TARBALL"; then
+    echo "دانلود نشد؛ اتصال اینترنت را بررسی کنید." >&2
+    rm -rf "$TMP"
+    exit 1
+  fi
+  mkdir -p "$TMP/src"
+  tar -xzf "$TMP/ofogheamn.tar.gz" -C "$TMP/src" --strip-components=1
+  SRC="$TMP/src"
+fi
+
+echo "در حال نصب DNS و پنل افق امن..."
+( cd "$SRC" && bash install.sh )
+rc=$?
+if [ $rc -eq 0 ]; then
+  rm -f /etc/saman-dns-pending
+  echo ""
+  echo "تمام شد. پنل: http://127.0.0.1:8080"
+  echo "نام کاربری و رمز پنل هنگام نصب چاپ شد؛ اگر ندیدید: ofogheamn-dns panel-password <رمز تازه>"
+else
+  echo "نصب پنل کامل نشد (کد $rc). سیستم‌عامل سالم است؛ دستور را دوباره اجرا کنید." >&2
+fi
+exit $rc

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=یادداشت سامان
+Name[fa]=یادداشت سامان
+Comment=یادداشت‌های ساده
+Exec=/usr/bin/saman-notes
+Icon=accessories-text-editor
+Terminal=false
+Categories=Utility

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=ماشین‌حساب سامان
+Name[fa]=ماشین‌حساب سامان
+Comment=ماشین‌حساب
+Exec=/usr/bin/saman-calc
+Icon=accessories-calculator
+Terminal=false
+Categories=Utility

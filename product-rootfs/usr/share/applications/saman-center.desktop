@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Saman Center
+Name[fa]=مرکز سامان
+Comment=Saman OS hub: info, updates, links
+Exec=saman-center
+Icon=preferences-system
+Terminal=false
+Categories=Settings;

@@ -1,0 +1,49 @@
+@import url("resource:///com/ubuntu/themes/Yaru/4.0/gtk.css");
+
+/* --- Saman OS glass overrides: one design language everywhere --- */
+headerbar {
+  background: rgba(16, 22, 44, 0.92);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+  box-shadow: none;
+}
+window, dialog, messagedialog {
+  border-radius: 14px;
+}
+button {
+  border-radius: 10px;
+}
+entry {
+  border-radius: 10px;
+}
+selection, *:selected {
+  background-color: #1f6feb;
+}
+
+/* --- Optimization pass 2 (Gtk4): same glass, same values --- */
+popover > contents, menu {
+  background: rgba(12, 18, 38, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+}
+calendar {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 14px;
+}
+calendar:selected { background-color: #1f6feb; color: #ffffff; }
+calendar.today {
+  background-color: rgba(31, 111, 235, 0.85);
+  color: #ffffff; font-weight: 800;
+}
+.card {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 14px;
+}
+scrollbar slider {
+  background: rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+}
+switch:checked, check:checked, radio:checked {
+  background-color: #1f6feb;
+}

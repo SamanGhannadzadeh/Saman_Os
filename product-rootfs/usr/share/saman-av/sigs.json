@@ -1,0 +1,8 @@
+{
+  "version": "2026.11.19-1",
+  "hashes": {
+    "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f": "EICAR-Test-File",
+    "44d88612fea8a8f36de82e1278abb02f": "EICAR-Test-File-MD5-Note"
+  },
+  "note": "SHA-256 signature set. The server refreshes this file from the central database (update-mirror.sh) and every agent pulls it over the school LAN."
+}

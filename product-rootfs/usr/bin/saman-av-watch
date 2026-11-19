@@ -1,0 +1,67 @@
+#!/usr/bin/env python3
+"""SamanOS Antivirus — realtime watch.
+
+Polls the hot folders (Downloads, Desktop, Documents) every
+30 seconds; any new or changed file is scanned at once with
+the SamanOS Antivirus engine and neutralised per the user's
+chosen action (quarantine by default, delete if configured).
+Runs as a systemd user service.
+"""
+import importlib.util
+import os
+import time
+
+spec = importlib.util.spec_from_file_location(
+    "saman_av_scan", "/usr/bin/saman-av-scan")
+engine = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(engine)
+
+
+def hot_dirs():
+    home = os.path.expanduser("~")
+    return [d for d in (os.path.join(home, x) for x in
+                        ("Downloads", "Desktop", "Documents"))
+            if os.path.isdir(d)]
+
+
+def snapshot(dirs):
+    snap = {}
+    for d in dirs:
+        for root, _dd, files in os.walk(d):
+            for name in files:
+                p = os.path.join(root, name)
+                try:
+                    snap[p] = os.path.getmtime(p)
+                except OSError:
+                    continue
+    return snap
+
+
+def main():
+    cfg = engine.load_cfg()
+    sigs = engine.load_sigs()
+    dirs = hot_dirs()
+    known = snapshot(dirs)
+    while True:
+        time.sleep(30)
+        try:
+            cfg = engine.load_cfg()
+            sigs = engine.load_sigs()
+            now = snapshot(dirs)
+            changed = [p for p, m in now.items()
+                       if known.get(p) != m and os.path.isfile(p)]
+            if changed:
+                parents = sorted({os.path.dirname(p)
+                                  for p in changed})
+                for f in engine.scan_builtin(parents, sigs)[0]:
+                    if f["path"] in changed:
+                        f["action"] = engine.apply_action(
+                            f["path"], cfg)
+                        engine.report(cfg, [f], "watch")
+            known = now
+        except Exception:
+            continue
+
+
+if __name__ == "__main__":
+    main()

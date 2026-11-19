@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=خوش‌آمد سامان
+Name[fa]=خوش‌آمد سامان
+Comment=اینتروی شروع سامان او اس
+Exec=/usr/bin/saman-welcome
+Icon=preferences-desktop
+Terminal=false
+Categories=Settings

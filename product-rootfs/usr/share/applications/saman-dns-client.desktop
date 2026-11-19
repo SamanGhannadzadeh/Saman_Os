@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Saman DNS Client
+Name[fa]=DNS افق امن
+Comment=Set the Ofogheamn gaming DNS
+Exec=saman-dns-client
+Icon=network-workgroup
+Terminal=false
+Categories=Network;Settings;
