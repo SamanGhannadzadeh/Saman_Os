@@ -1,12 +1,12 @@
 # Saman OS
 
-**سامان اواس** — یک سیستم‌عامل مدرن بر پایهٔ لینوکس (اوبونتو ۲۶٫۱۰) با محیط دسکتاپ GNOME و تم Yaru، ساختهٔ سامان قنادزاده یزدی.
+**سامان اواس** — یک سیستم‌عامل مدرن بر پایهٔ لینوکس (اوبونتو ۲۶٫۱۰) با محیط دسکتاپ GNOME و طراحی شیشه‌ای اختصاصی، ساختهٔ سامان قنادزاده یزدی.
 
-**Saman OS** — a modern Linux-based operating system (Ubuntu 26.10 base) with the GNOME desktop and Yaru theme, built by Saman Ghannadzadeh Yazdi.
+**Saman OS** — a modern Linux-based operating system (Ubuntu 26.10 base) with the GNOME desktop and a custom glass design, built by Saman Ghannadzadeh Yazdi.
 
 ## وضعیت | Status
 
-- نسخهٔ فعلی: **3.1** — نسخهٔ کامل: دسکتاپ گنوم با طراحی شیشه‌ای و ۱٬۹۲۲ بسته، آنتی‌ویروس SamanOS، نصاب دوال‌بوت با رمزگذاری LUKS2 و به‌روزرسان داخلی. تازه در ۳٫۱: بوت از فایل ISO روی دیسک داخلی (بدون فلش، با GRUB2Win) — راهنما در `docs/GRUB2WIN-BOOT.fa.md`.
+- نسخهٔ فعلی: **4.0** — نسخهٔ سازگاری با سخت‌افزار: لودر زنده با ۵۴ ماژول ذخیره‌سازی، شناسایی خودکار سخت‌افزار و انتظار/تلاشِ دوباره برای دیده‌شدن دیسک‌ها (رفع مشکل بوت ۳٫۱ روی برخی لپ‌تاپ‌ها)، طراحی شیشه‌ای ۳٫۵، ویزارد اینتروی اجرای اول و ۱٬۹۲۵ بسته؛ آنتی‌ویروس SamanOS، نصاب دوال‌بوت با رمزگذاری LUKS2 و به‌روزرسان داخلی. بوت از فایل ISO روی دیسک داخلی (بدون فلش، با GRUB2Win) — راهنما در `docs/GRUB2WIN-BOOT.fa.md`.
 - ایمیج زنده (Live ISO) با بوت دوگانهٔ BIOS و UEFI در بخش Releases منتشر می‌شود.
 
 ## دانلود | Download
@@ -16,11 +16,12 @@
 
 1. **GitHub Releases** (راه اصلی):
    https://github.com/saman-ghannadzadeh/saman-os/releases
-   — نسخهٔ ۳٫۱ (کامل، ۲٫۷۷ گیگابایت): ISO به‌علت سقف آپلود در ۴ تکه روی گوگل درایو میزبانی می‌شود؛ هر ۴ تکه را بگیرید و با اسکریپت وصل‌کردنِ همان صفحه به یک ISO تبدیل کنید:
-   بخش ۰۰: https://drive.google.com/file/d/1f1Giy9zTxjG5avKdwgzbnZdsFxr03NMl/view?usp=drivesdk
-   بخش ۰۱: https://drive.google.com/file/d/1OrNUSFDiv9dQz32S5W-k9d1R6Yw9CWge/view?usp=drivesdk
-   بخش ۰۲: https://drive.google.com/file/d/1a3GA5pL3s35gpnM8EIjXgo2lGqpWUUyc/view?usp=drivesdk
-   بخش ۰۳: https://drive.google.com/file/d/11ePYx9pq8YCKsShutqCJUN4FHgusaP9V/view?usp=drivesdk
+   — نسخهٔ ۴٫۰ (کامل، ۲٫۶۳۴ گیگابایت): ISO به‌علت سقف آپلود در ۳ تکه روی گوگل درایو میزبانی می‌شود؛ هر ۳ تکه را بگیرید و با اسکریپت وصل‌کردنِ همان صفحه به یک ISO تبدیل کنید:
+   بخش ۰۰: https://drive.google.com/file/d/1N3kSWCcFkpeFCeFL__H1Pfvb9X-xzJMY/view
+   بخش ۰۱: https://drive.google.com/file/d/19e5LSxG1Z3s8s4xlrR-uQwecXQ9158aP/view
+   بخش ۰۲: https://drive.google.com/file/d/1gYAVygnCkEVruD3qP0GyxnGvTE1MqTal/view
+   وصل‌کردن (لینوکس): https://drive.google.com/file/d/1tagpI-Kjnqt1lauHcenV3T080-t1CkN9/view
+   وصل‌کردن (ویندوز): https://drive.google.com/file/d/1Fnbo4-n7t889S8JLa7RGv6TRvOMxBfEL/view
 2. **آینهٔ archive.org** — برای دانلود راحت‌تر از داخل ایران،
    لینک هر نسخه در همان صفحهٔ Releases اعلام می‌شود.
 3. **تورنت** — فایل `.torrent` و لینک مگنت کنار هر Release
